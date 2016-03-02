@@ -7,7 +7,7 @@ gems = client[:gems]
 dataset = []
 dataset << ['name','average.downloads', 'download.pattern', 'weekday.downloads.percentage',
             'average.commits.per.day', 'weekday.commits.percentage', 'commit.pattern',
-            'average.issue.resolution.time', 'issue.pattern', 'top.half.contributors.contribution',
+            'average.issue.resolution.time', 'issue.pattern', 'top.contributors.contribution',
             'average.commits.per.contributor', 'contributors',
             'average.forks', 'average.stars', 'last.commit.days']
 
@@ -96,16 +96,19 @@ gems.find().each do |document|
     issue_pattern = second_half_issues.to_f / first_half_issues.to_f
   end
 
-  # Percentage of the top half contributors commits
+  # Percentage of the top contributors commits
   if document['contributors'].nil? || document['contributors'].length == 0 || !document['commits']
-    percentage_top_half_contributors_commits = ''
+    percentage_top_contributors_commits = ''
   else
-    half_contributors = (document['contributors'].length.to_f / 2).round
-    half_contributors_total = 0
-    document['contributors'][0..half_contributors].each do |contributor|
-      half_contributors_total += contributor['contributions']
+    if document['contributors'].length > 1
+      top_contributors_total = 0
+      document['contributors'][0..1].each do |contributor|
+        top_contributors_total += contributor['contributions']
+      end
+      percentage_top_contributors_commits = top_contributors_total.to_f / document['commits'].to_f
+    else
+      percentage_top_contributors_commits = 1
     end
-    percentage_top_half_contributors_commits = half_contributors_total.to_f / document['commits'].to_f
   end
 
   # Average commits (per contributors)
@@ -146,7 +149,7 @@ gems.find().each do |document|
     weekday_downloads_percent, average_commits,
     weekday_commit_percent, commit_pattern,
     average_issue_resolution_time, issue_pattern,
-    percentage_top_half_contributors_commits,
+    percentage_top_contributors_commits,
     average_contributor_commits, contributors_number,
     average_forks, average_stars, last_commit_days
   ]
