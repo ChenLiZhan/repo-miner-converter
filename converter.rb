@@ -13,32 +13,50 @@ dataset << ['name','average.downloads', 'download.pattern', 'weekday.downloads.p
 
 gems.find().each do |document|
   # Average downloads
-  first_publish = document['version_downloads_days'].first['created_at']
-  duration = (Date.today - Date.parse(first_publish)).to_i
-  average_downloads = document['total_downloads'].to_f / duration.to_f
+  if document['version_downloads_days'].nil? || document['version_downloads_days'].empty?
+    average_downloads = 0
+  else
+    first_publish = document['version_downloads_days'].first['created_at']
+    duration = (Date.today - Date.parse(first_publish)).to_i
+    average_downloads = document['total_downloads'].to_f / duration.to_f
+  end
 
   # Donwloads pattern
-  downloads_aggregation = Hash.new(0)
-  document['version_downloads_days'].each do |version|
-    version['downloads_date'].each_pair do |key, downloads|
-      downloads_aggregation[key] += downloads
+  if document['version_downloads_days'].nil? || document['version_downloads_days'].empty?
+    downloads_pattern = 0
+  else
+    downloads_aggregation = Hash.new(0)
+    document['version_downloads_days'].each do |version|
+      version['downloads_date'].each_pair do |key, downloads|
+        downloads_aggregation[key] += downloads
+      end
     end
+    duration = downloads_aggregation.length
+    mid_date = Date.parse(downloads_aggregation.keys[(duration / 2).round - 1])
+    first_half_downloads, second_half_downloads = 0, 0
+    downloads_aggregation.each_pair do |date, downloads|
+      Date.parse(date) >= mid_date ? second_half_downloads += downloads : first_half_downloads += downloads
+    end
+    downloads_pattern = second_half_downloads.to_f / first_half_downloads.to_f
   end
-  duration = downloads_aggregation.length
-  mid_date = Date.parse(downloads_aggregation.keys[(duration / 2).round - 1])
-  first_half_downloads, second_half_downloads = 0, 0
-  downloads_aggregation.each_pair do |date, downloads|
-    Date.parse(date) >= mid_date ? second_half_downloads += downloads : first_half_downloads += downloads
-  end
-  downloads_pattern = second_half_downloads.to_f / first_half_downloads.to_f
 
   # Percentage of downloads on week day
-  total_downloads = downloads_aggregation.values.reduce(:+)
-  weekend_downloads = 0
-  downloads_aggregation.each_pair do |date, downloads|
-    weekend_downloads += downloads if Date.parse(date).sunday? || Date.parse(date).saturday?
+  if document['version_downloads_days'].nil? || document['version_downloads_days'].empty?
+    weekday_downloads_percent = 0
+  else
+    downloads_aggregation = Hash.new(0)
+    document['version_downloads_days'].each do |version|
+      version['downloads_date'].each_pair do |key, downloads|
+        downloads_aggregation[key] += downloads
+      end
+    end
+    total_downloads = downloads_aggregation.values.reduce(:+)
+    weekend_downloads = 0
+    downloads_aggregation.each_pair do |date, downloads|
+      weekend_downloads += downloads if Date.parse(date).sunday? || Date.parse(date).saturday?
+    end
+    weekday_downloads_percent =  1 - (weekend_downloads.to_f / total_downloads.to_f)
   end
-  weekday_downloads_percent =  1 - (weekend_downloads.to_f / total_downloads.to_f)
 
   # Average commits (per day)
   if !document['commits'] || document['commit_history'].nil? || document['commit_history'].length == 0
@@ -142,7 +160,11 @@ gems.find().each do |document|
   end
   
   # Last commit day
-  last_commit_days = document['last_commit']
+  if document['last_commit'].nil?
+    last_commit_days = ''
+  else
+    last_commit_days = document['last_commit']
+  end
 
   dataset << [ 
     document['name'], average_downloads, downloads_pattern,
