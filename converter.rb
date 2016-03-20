@@ -170,9 +170,10 @@ gems.find().each do |document|
   # Total word count
   total_word_count = 0
   if document['readme_raw_text'].nil?
-    total_word_count = nil
+    total_word_count = 0
   else
     readme_text = Base64.decode64(document['readme_raw_text']['content'])
+    readme_text = readme_text.gsub(/[\r\n]/, ' ')
     words = readme_text.split(' ')
     words.each do |word|
       if word =~ /^\w+$/
