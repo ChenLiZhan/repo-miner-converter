@@ -1,5 +1,6 @@
 require 'mongo'
 require 'csv'
+require 'base64'
 
 client = Mongo::Client.new(ENV['mongodb_uri'], :max_pool_size => 10)
 
@@ -9,7 +10,7 @@ dataset << ['name','average.downloads', 'download.pattern', 'weekday.downloads.p
             'average.commits.per.day', 'weekday.commits.percentage', 'commit.pattern',
             'average.issue.resolution.time', 'issue.pattern', 'top.contributors.contribution',
             'average.commits.per.contributor', 'contributors',
-            'average.forks', 'average.stars', 'last.commit.days']
+            'average.forks', 'average.stars', 'last.commit.days', 'readme.word.count']
 
 gems.find().each do |document|
   # Average downloads
@@ -166,6 +167,20 @@ gems.find().each do |document|
     last_commit_days = document['last_commit']
   end
 
+  # Total word count
+  total_word_count = 0
+  if document['readme_raw_text'].nil?
+    total_word_count = nil
+  else
+    readme_text = Base64.decode64(document['readme_raw_text']['content'])
+    words = readme_text.split(' ')
+    words.each do |word|
+      if word =~ /^\w+$/
+        total_word_count += 1
+      end
+    end
+  end
+
   dataset << [ 
     document['name'], average_downloads, downloads_pattern,
     weekday_downloads_percent, average_commits,
@@ -173,12 +188,12 @@ gems.find().each do |document|
     average_issue_resolution_time, issue_pattern,
     percentage_top_contributors_commits,
     average_contributor_commits, contributors_number,
-    average_forks, average_stars, last_commit_days
+    average_forks, average_stars, last_commit_days, total_word_count
   ]
   puts document['name']
 end
 
-CSV.open('data.csv', 'w') do |csv|
+CSV.open('data-100-test.csv', 'w') do |csv|
     dataset.each do |row|
       csv << row
     end
