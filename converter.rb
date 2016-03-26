@@ -10,15 +10,18 @@ dataset << ['name','average.downloads', 'download.pattern', 'weekday.downloads.p
             'average.commits.per.day', 'weekday.commits.percentage', 'commit.pattern',
             'average.issue.resolution.time', 'issue.pattern', 'top.contributors.contribution',
             'average.commits.per.contributor', 'contributors',
-            'average.forks', 'average.stars', 'last.commit.days', 'readme.word.count']
+            'average.forks', 'average.stars', 'last.commit.days', 'readme.word.count', 'number.badges', 'abandonment']
 
 # Average downloads per day
-def get_average_downloads(data)
+def get_average_downloads(data, end_date=Date.today)
   if data['version_downloads_days'].nil? || data['version_downloads_days'].empty?
     average_downloads = 0
   else
     first_publish = data['version_downloads_days'].first['created_at']
-    duration = (Date.today - Date.parse(first_publish)).to_i
+    duration = (end_date - Date.parse(first_publish)).to_i
+
+    duration = 1 if duration === 0
+    
     average_downloads = data['total_downloads'].to_f / duration.to_f
   end
 
@@ -26,7 +29,7 @@ def get_average_downloads(data)
 end
 
 # Second half downloads / First half downloads
-def get_download_pattern(data)
+def get_download_pattern(data, end_date=Date.today)
   if data['version_downloads_days'].nil? || data['version_downloads_days'].empty?
     downloads_pattern = 0
   else
@@ -36,11 +39,18 @@ def get_download_pattern(data)
         downloads_aggregation[key] += downloads
       end
     end
+
+    downloads_aggregation = downloads_aggregation.select do |date, download|
+      Date.parse(date.to_s) <= end_date
+    end
     duration = downloads_aggregation.length
+
+    return 0 if duration === 0
+
     mid_date = Date.parse(downloads_aggregation.keys[(duration / 2).round - 1])
     first_half_downloads, second_half_downloads = 0, 0
     downloads_aggregation.each_pair do |date, downloads|
-      Date.parse(date) >= mid_date ? second_half_downloads += downloads : first_half_downloads += downloads
+      Date.parse(date) > mid_date ? second_half_downloads += downloads : first_half_downloads += downloads
     end
     downloads_pattern = second_half_downloads.to_f / first_half_downloads.to_f
   end
@@ -49,7 +59,7 @@ def get_download_pattern(data)
 end
 
 # Percentage of downloads on weekday
-def get_percentage_downloads_weekday(data) 
+def get_percentage_downloads_weekday(data, end_date=Date.today) 
   if data['version_downloads_days'].nil? || data['version_downloads_days'].empty?
     weekday_downloads_percent = 0
   else
@@ -59,7 +69,15 @@ def get_percentage_downloads_weekday(data)
         downloads_aggregation[key] += downloads
       end
     end
-    total_downloads = downloads_aggregation.values.reduce(:+)
+
+    downloads_aggregation = downloads_aggregation.select do |date, download|
+      Date.parse(date.to_s) <= end_date
+    end
+
+    total_downloads = downloads_aggregation.values.reduce(:+) || 0
+
+    return 0 if total_downloads === 0
+
     weekend_downloads = 0
     downloads_aggregation.each_pair do |date, downloads|
       weekend_downloads += downloads if Date.parse(date).sunday? || Date.parse(date).saturday?
@@ -71,24 +89,36 @@ def get_percentage_downloads_weekday(data)
 end
 
 # Average commits per day
-def get_average_commits_days(data)
-  if !data['commits'] || data['commit_history'].nil? || data['commit_history'].length == 0
+def get_average_commits_days(data, end_date=Date.today)
+  if data['commit_history'].nil? || data['commit_history'].length == 0
     average_commits = ''
   else
-    duration = (Date.parse(data['created_at'].to_s) - Date.parse(data['commit_history'].first['created_at'])).to_i
-    average_commits = data['commits'].to_f / duration.to_f
+    total_commits = 0
+    duration = (end_date - Date.parse(data['commit_history'].first['created_at'])).to_i
+
+    data['commit_history'].each do |commit|
+      total_commits += 1 if Date.parse(commit['created_at'].to_s) < end_date
+    end
+
+    return 0 if total_commits === 0
+
+    average_commits = total_commits.to_f / duration.to_f
   end
 
   average_commits
 end
 
 # Percentage of commits on weekday
-def get_percentage_commits_weekday(data)
+def get_percentage_commits_weekday(data, end_date=Date.today)
   if data['commit_history'].nil? || data['commit_history'].length == 0
     weekday_commit_percent = ''
   else
+    commits_history_filter = data['commit_history'].select do |element|
+      Date.parse(element['created_at'].to_s) <= end_date
+    end
+
     weekday_commits = 0
-    data['commit_history'].each do |commit|
+    commits_history_filter.each do |commit|
       weekday_commits += 1 if !Date.parse(commit['created_at']).sunday? && !Date.parse(commit['created_at']).saturday?
     end
     weekday_commit_percent = weekday_commits.to_f / data['commit_history'].length.to_f
@@ -98,15 +128,20 @@ def get_percentage_commits_weekday(data)
 end
 
 # Second half commits / First half commits
-def get_commit_pattern(data)
+def get_commit_pattern(data, end_date=Date.today)
   if !data['commit_history']
     commit_pattern = ''
   else
-    duration = (Date.parse(data['created_at'].to_s) - Date.parse(data['commit_history'].first['created_at'])).to_i
+    duration = (end_date - Date.parse(data['commit_history'].first['created_at'])).to_i
     mid_date = Date.parse(data['commit_history'].first['created_at']) + (duration.to_f / 2).round
     first_half_commits, second_half_commits = 0, 0
-    data['commit_history'].each do |commit|
-      Date.parse(commit['created_at']) >= mid_date ? second_half_commits += 1 : first_half_commits += 1
+
+    commits_history_filter = data['commit_history'].select do |element|
+      Date.parse(element['created_at'].to_s) <= end_date
+    end
+
+    commits_history_filter.each do |commit|
+      Date.parse(commit['created_at']) > mid_date ? second_half_commits += 1 : first_half_commits += 1
     end
     commit_pattern = second_half_commits.to_f / first_half_commits
   end
@@ -115,30 +150,44 @@ def get_commit_pattern(data)
 end
 
 # Average time of issue resolution
-def get_average_issue_resolution(data)
+def get_average_issue_resolution(data, end_date=Date.today)
   if data['issues_info'].nil? || data['issues_info'].length == 0
     average_issue_resolution_time = ''
   else
+    issues_info_filter = data['issues_info'].select do |element|
+      Date.parse(element['created_at'].to_s) <= end_date && Date.parse(element['closed_at'].to_s) <= end_date
+    end
+
     total_duration = 0
-    data['issues_info'].each do |issue|
+
+    return '' if issues_info_filter.length === 0
+
+    issues_info_filter.each do |issue|
       total_duration += issue['duration']
     end
-    average_issue_resolution_time = total_duration.to_f / data['issues_info'].length.to_f
+    average_issue_resolution_time = total_duration.to_f / issues_info_filter.length.to_f
   end
 
   average_issue_resolution_time
 end
 
 # Second half closed issues / First half closed issues
-def get_closed_issue_pattern(data)
+def get_closed_issue_pattern(data, end_date=Date.today)
   if data['commit_history'].nil? || data['commit_history'].length == 0 || data['issues_info'].nil? || data['issues_info'].length == 0
     issue_pattern = ''
   else
-    duration = (Date.parse(data['created_at'].to_s) - Date.parse(data['commit_history'].first['created_at'])).to_i
+    duration = (end_date - Date.parse(data['commit_history'].first['created_at'])).to_i
     mid_date = Date.parse(data['commit_history'].first['created_at']) + (duration.to_f / 2).round
     first_half_issues, second_half_issues = 0, 0
-    data['issues_info'].each do |issue|
-      Date.parse(issue['created_at']) >= mid_date ? second_half_issues += 1 : first_half_issues += 1
+
+    issues_info_filter = data['issues_info'].select do |element|
+      Date.parse(element['created_at'].to_s) < end_date && Date.parse(element['closed_at'].to_s) <= end_date
+    end
+
+    return '' if issues_info_filter.length === 0
+
+    issues_info_filter.each do |issue|
+      Date.parse(issue['created_at']) > mid_date ? second_half_issues += 1 : first_half_issues += 1
     end
     issue_pattern = second_half_issues.to_f / first_half_issues.to_f
   end
@@ -187,11 +236,14 @@ def get_number_contributors(data)
 end
 
 # Average stars per day
-def get_average_stars(data)
+def get_average_stars(data, end_date=Date.today)
   if data['commit_history'].nil? || data['commit_history'].length == 0 || !data['stars']
     average_stars = ''
   else
-    duration = (Date.parse(data['created_at'].to_s) - Date.parse(data['commit_history'].first['created_at'])).to_i
+    duration = (end_date - Date.parse(data['commit_history'].first['created_at'])).to_i
+
+    duration = 1 if duration === 0
+
     average_stars = data['stars'].to_f / duration.to_f
   end
 
@@ -199,11 +251,14 @@ def get_average_stars(data)
 end
 
 # Average forks per day
-def get_average_forks(data)
+def get_average_forks(data, end_date=Date.today)
   if data['commit_history'].nil? || data['commit_history'].length == 0 || !data['forks']
     average_forks = ''
   else
-    duration = (Date.parse(data['created_at'].to_s) - Date.parse(data['commit_history'].first['created_at'])).to_i
+    duration = (end_date - Date.parse(data['commit_history'].first['created_at'])).to_i || 1
+
+    duration = 1 if duration === 0
+
     average_forks = data['forks'].to_f / duration.to_f
   end
 
@@ -247,42 +302,82 @@ def get_total_number_badges(data)
     readme_text = Base64.decode64(data['readme_raw_text']['content'])
     readme_text = readme_text.gsub(/[\r\n]/, ' ')
     badges_regex = /\[!\[.*\]\(.*(badge.fury|gemnasium|inch-ci|travis-ci|codeship|jenkins|codeclimate).*\)\]\(.*\)/
-    total_badges = readme._text.scan(badges_regex).length
+    total_badges = readme_text.scan(badges_regex).length
   end
 
   total_badges
 end
 
 gems.find().each do |document|
-  average_downloads = get_average_downloads(document)
-  downloads_pattern = get_download_pattern(document)
-  weekday_downloads_percent = get_percentage_downloads_weekday(document)
-  average_commits = get_average_commits_days(document)
-  weekday_commit_percent = get_percentage_commits_weekday(document)
-  commit_pattern = get_commit_pattern(document)
-  average_issue_resolution_time = get_average_issue_resolution(document)
-  issue_pattern = get_closed_issue_pattern(document)
-  percentage_top_contributors_commits = get_percentage_top_contributor_commits(document)
-  average_contributor_commits = get_average_commits_contributors(document)
-  contributors_number = get_number_contributors(document)
-  average_forks = get_average_forks(document)
-  average_stars = get_average_stars(document)
-  last_commit_days = get_last_commit_days(document)
-  total_word_count = get_total_readme_word_count(document)
-
-  dataset << [ 
-    document['name'], average_downloads, downloads_pattern,
-    weekday_downloads_percent, average_commits,
-    weekday_commit_percent, commit_pattern,
-    average_issue_resolution_time, issue_pattern,
-    percentage_top_contributors_commits,
-    average_contributor_commits, contributors_number,
-    average_forks, average_stars, last_commit_days, total_word_count
-  ]
-  puts document['name']
+  if !document['commit_history'].nil?
+    days_since_first_commit = (Date.parse(document['created_at'].to_s) - Date.parse(document['commit_history'][0]['created_at'].to_s)).to_i
+    if days_since_first_commit >= 365
+      if !document['last_commit'].nil? && document['last_commit'] >= 365
+        terminated_date = Date.parse(document['created_at'].to_s) - document['last_commit'].to_i
+        average_downloads = get_average_downloads(document, terminated_date)
+        downloads_pattern = get_download_pattern(document, terminated_date)
+        weekday_downloads_percent = get_percentage_downloads_weekday(document, terminated_date)
+        average_commits = get_average_commits_days(document, terminated_date)
+        weekday_commit_percent = get_percentage_commits_weekday(document, terminated_date)
+        commit_pattern = get_commit_pattern(document, terminated_date)
+        average_issue_resolution_time = get_average_issue_resolution(document, terminated_date)
+        issue_pattern = get_closed_issue_pattern(document, terminated_date)
+        percentage_top_contributors_commits = get_percentage_top_contributor_commits(document)
+        average_contributor_commits = get_average_commits_contributors(document)
+        contributors_number = get_number_contributors(document)
+        average_forks = get_average_forks(document, terminated_date)
+        average_stars = get_average_stars(document, terminated_date)
+        last_commit_days = get_last_commit_days(document)
+        total_word_count = get_total_readme_word_count(document)
+        number_badges = get_total_number_badges(document)
+        abandonment = 1
+      elsif !document['last_commit'].nil?
+        average_downloads = get_average_downloads(document)
+        downloads_pattern = get_download_pattern(document)
+        weekday_downloads_percent = get_percentage_downloads_weekday(document)
+        average_commits = get_average_commits_days(document)
+        weekday_commit_percent = get_percentage_commits_weekday(document)
+        commit_pattern = get_commit_pattern(document)
+        average_issue_resolution_time = get_average_issue_resolution(document)
+        issue_pattern = get_closed_issue_pattern(document)
+        percentage_top_contributors_commits = get_percentage_top_contributor_commits(document)
+        average_contributor_commits = get_average_commits_contributors(document)
+        contributors_number = get_number_contributors(document)
+        average_forks = get_average_forks(document)
+        average_stars = get_average_stars(document)
+        last_commit_days = get_last_commit_days(document)
+        total_word_count = get_total_readme_word_count(document)
+        number_badges = get_total_number_badges(document)
+        abandonment = 0
+      end
+    end
+    dataset << [ 
+      document['name'], average_downloads, downloads_pattern,
+      weekday_downloads_percent, average_commits,
+      weekday_commit_percent, commit_pattern,
+      average_issue_resolution_time, issue_pattern,
+      percentage_top_contributors_commits,
+      average_contributor_commits, contributors_number,
+      average_forks, average_stars, last_commit_days, total_word_count, number_badges, abandonment
+    ]
+    puts document['name']
+  end
 end
 
-CSV.open('data-100-test.csv', 'w') do |csv|
+num_of_abandonnment = dataset.select do |element|
+  element[-1] == 1
+end.length
+
+num_of_maintenance = dataset.select do |element|
+  element[-1] == 0
+end.length
+
+puts '=========================STATS=============================='
+puts "Number of converted gems: #{dataset.length - 1}"
+puts "Number of abandonment: #{num_of_abandonnment}(#{num_of_abandonnment.to_f / (dataset.length - 1)})"
+puts "Number of maintenance: #{num_of_maintenance}(#{num_of_maintenance.to_f / (dataset.length - 1)}"
+puts '============================================================'
+CSV.open('data-1500-test-20160326.csv', 'w') do |csv|
     dataset.each do |row|
       csv << row
     end
