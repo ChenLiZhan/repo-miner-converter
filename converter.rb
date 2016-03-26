@@ -240,6 +240,19 @@ def get_total_readme_word_count(data)
   total_word_count
 end
 
+def get_total_number_badges(data)
+  if data['readme_raw_text'].nil?
+    total_badges = 0
+  else
+    readme_text = Base64.decode64(data['readme_raw_text']['content'])
+    readme_text = readme_text.gsub(/[\r\n]/, ' ')
+    badges_regex = /\[!\[.*\]\(.*(badge.fury|gemnasium|inch-ci|travis-ci|codeship|jenkins|codeclimate).*\)\]\(.*\)/
+    total_badges = readme._text.scan(badges_regex).length
+  end
+
+  total_badges
+end
+
 gems.find().each do |document|
   average_downloads = get_average_downloads(document)
   downloads_pattern = get_download_pattern(document)
