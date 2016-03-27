@@ -17,10 +17,12 @@ def get_average_downloads(data, end_date=Date.today)
   if data['version_downloads_days'].nil? || data['version_downloads_days'].empty?
     average_downloads = 0
   else
-    first_publish = data['version_downloads_days'].first['created_at']
+    # Assume first commit as publish date
+    first_publish = data['commit_history'][0]['created_at'].to_s
+
     duration = (end_date - Date.parse(first_publish)).to_i
 
-    duration = 1 if duration === 0
+    duration = 1 if duration <= 0
     
     average_downloads = data['total_downloads'].to_f / duration.to_f
   end
@@ -181,7 +183,7 @@ def get_closed_issue_pattern(data, end_date=Date.today)
     first_half_issues, second_half_issues = 0, 0
 
     issues_info_filter = data['issues_info'].select do |element|
-      Date.parse(element['created_at'].to_s) < end_date && Date.parse(element['closed_at'].to_s) <= end_date
+      Date.parse(element['created_at'].to_s) <= end_date && Date.parse(element['closed_at'].to_s) <= end_date
     end
 
     return '' if issues_info_filter.length === 0
@@ -242,7 +244,7 @@ def get_average_stars(data, end_date=Date.today)
   else
     duration = (end_date - Date.parse(data['commit_history'].first['created_at'])).to_i
 
-    duration = 1 if duration === 0
+    duration = 1 if duration <= 0
 
     average_stars = data['stars'].to_f / duration.to_f
   end
@@ -257,7 +259,7 @@ def get_average_forks(data, end_date=Date.today)
   else
     duration = (end_date - Date.parse(data['commit_history'].first['created_at'])).to_i || 1
 
-    duration = 1 if duration === 0
+    duration = 1 if duration <= 0
 
     average_forks = data['forks'].to_f / duration.to_f
   end
